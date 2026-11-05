@@ -18,7 +18,19 @@ export function iconURL(key: string): string {
   if (it.block && ATLAS) {
     const b = it.block;
     const L = (i: number) => layerCanvas(ATLAS!.data[i] ?? ATLAS!.data[0]);
-    if (b.shape === 'cross' || b.shape === 'panel' || b.shape === 'ladder' || b.shape === 'carpet') { g.drawImage(L(b.fl[16]), 6, 6, 52, 52); }
+    if (b.shape === 'ladder') {
+      const base = b.map ?? '#9aa2aa', tex = L(b.fl[16]);
+      g.save(); g.translate(32, 32); g.rotate(-0.28); g.translate(-32, -32);
+      // soft drop shadow, rails, rungs — textured with the real material
+      g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(19, 6, 8, 54); g.fillRect(41, 6, 8, 54);
+      const pat = g.createPattern(tex, 'repeat')!;
+      g.fillStyle = base; g.fillRect(15, 3, 8, 58); g.fillRect(41, 3, 8, 58);
+      g.globalAlpha = 0.7; g.fillStyle = pat; g.fillRect(15, 3, 8, 58); g.fillRect(41, 3, 8, 58); g.globalAlpha = 1;
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(15, 3, 2, 58); g.fillRect(41, 3, 2, 58);
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(21, 3, 2, 58); g.fillRect(47, 3, 2, 58);
+      for (let i = 0; i < 5; i++) { const y = 8 + i * 12; g.fillStyle = base; g.fillRect(23, y, 18, 6); g.globalAlpha = 0.7; g.fillStyle = pat; g.fillRect(23, y, 18, 6); g.globalAlpha = 1; g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(23, y, 18, 2); g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(23, y + 5, 18, 1); }
+      g.restore();
+    } else if (b.shape === 'cross' || b.shape === 'panel' || b.shape === 'carpet') { g.drawImage(L(b.fl[16]), 6, 6, 52, 52); }
     else {
       const top = L(b.fl[8]), right = L(b.fl[0]), left = L(b.fl[16]);
       g.save(); g.setTransform(26 / 32, 13 / 32, -26 / 32, 13 / 32, 32, 3); g.drawImage(top, 0, 0); g.restore();

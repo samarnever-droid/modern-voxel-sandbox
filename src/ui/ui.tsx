@@ -5,9 +5,9 @@ import { DEFAULT_KEYS, DEFAULT_SETTINGS, runCommand } from '../game/core';
 import { iconURL } from './icons';
 import { audio } from '../audio/audio';
 import { QUALITY } from '../render/types';
-import { WorldMeta } from '../save/persist';
 import { InstalledMod, ModReport, importFiles, loadInstalled, saveInstalled, validateManifest } from '../mods/loader';
 import { EXAMPLE_MODS } from '../mods/examples';
+import { GuideCard } from './menus';
 
 export const cx = (...a: (string | false | undefined | null)[]) => a.filter(Boolean).join(' ');
 const panel = 'bg-slate-950/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/60';
@@ -38,7 +38,7 @@ export function Hud({ game }: { game: Game }) {
     <div className="absolute inset-0 pointer-events-none select-none text-slate-100" style={{ transform: `scale(${scale})`, transformOrigin: 'center bottom' }}>
       {game.p.under && <div className="absolute inset-0 bg-cyan-900/20" />}
       {game.sim.weather.flash > 0 && <div className="absolute inset-0 bg-white" style={{ opacity: game.sim.weather.flash * 0.35 }} />}
-      {showCross && <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"><div className={cx('w-5 h-5 relative', hc && 'scale-125')}><i className="absolute left-1/2 top-0 w-0.5 h-1.5 -translate-x-1/2 bg-white/90" /><i className="absolute left-1/2 bottom-0 w-0.5 h-1.5 -translate-x-1/2 bg-white/90" /><i className="absolute top-1/2 left-0 h-0.5 w-1.5 -translate-y-1/2 bg-white/90" /><i className="absolute top-1/2 right-0 h-0.5 w-1.5 -translate-y-1/2 bg-white/90" /></div>{h.mining > 0.02 && <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-16 h-1.5 bg-black/50 rounded"><div className="h-full bg-amber-300 rounded" style={{ width: `${Math.min(100, h.mining * 100)}%` }} /></div>}{h.target && <div className="absolute top-8 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap bg-black/40 px-2 py-0.5 rounded">{h.target}</div>}</div>}
+      {showCross && <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"><div className={cx('w-5 h-5 relative', hc && 'scale-125')}><i className="absolute left-1/2 top-0 w-0.5 h-1.5 -translate-x-1/2 bg-white/90" /><i className="absolute left-1/2 bottom-0 w-0.5 h-1.5 -translate-x-1/2 bg-white/90" /><i className="absolute top-1/2 left-0 h-0.5 w-1.5 -translate-y-1/2 bg-white/90" /><i className="absolute top-1/2 right-0 h-0.5 w-1.5 -translate-y-1/2 bg-white/90" />{game.hitT > 0 && <div className="absolute inset-[-6px] rotate-45" style={{ opacity: game.hitT * 4 }}><i className="absolute left-1/2 top-0 w-0.5 h-full -translate-x-1/2 bg-rose-400" /><i className="absolute top-1/2 left-0 h-0.5 w-full -translate-y-1/2 bg-rose-400" /></div>}</div>{h.mining > 0.02 && <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-16 h-1.5 bg-black/50 rounded"><div className="h-full bg-amber-300 rounded" style={{ width: `${Math.min(100, h.mining * 100)}%` }} /></div>}{h.target && <div className="absolute top-8 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap bg-black/40 px-2 py-0.5 rounded">{h.target}</div>}</div>}
       {/* compass */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[420px] max-w-[60vw] h-8 overflow-hidden rounded-full bg-black/35 border border-white/10">
         {Array.from({ length: 24 }).map((_, i) => { const deg = i * 15; let d = ((deg - heading + 540) % 360) - 180; const label = deg % 45 === 0 ? dirs[deg / 45] : ''; return <div key={i} className="absolute top-0 h-full flex flex-col items-center justify-center text-[10px] text-slate-300" style={{ left: `${50 + d * 0.55}%`, opacity: Math.max(0, 1 - Math.abs(d) / 85) }}><span className={cx(label === 'N' && 'text-amber-300 font-bold')}>{label || '·'}</span></div>; })}
@@ -56,8 +56,9 @@ export function Hud({ game }: { game: Game }) {
       </div>
       {/* widgets */}
       {(h.widgets ?? []).map((w: any, i: number) => <div key={i} className={cx('absolute text-xs bg-black/45 rounded px-2 py-1 font-mono', w.pos === 'bottom-left' ? 'left-3 bottom-24' : w.pos === 'top-left' ? 'left-3 top-3' : 'right-3 top-60')}>{w.text}</div>)}
+      <GuideCard game={game} />
       {/* objective */}
-      {game.mode === 'challenge' && objective && <div className="absolute left-3 top-3 w-60 bg-black/45 border border-white/10 rounded-lg p-2 text-xs"><div className="text-amber-300 font-bold tracking-widest text-[10px]">OBJECTIVE</div><div className="font-semibold">{objective.name}</div><div className="text-slate-300">{objective.desc}</div><div className="mt-1 h-1.5 bg-white/10 rounded"><div className="h-full bg-amber-300 rounded" style={{ width: `${Math.min(100, ((game.stats[objective.stat] ?? 0) / objective.goal) * 100)}%` }} /></div></div>}
+      {game.mode === 'challenge' && objective && <div className="absolute left-3 top-[19rem] w-60 bg-black/45 border border-white/10 rounded-lg p-2 text-xs"><div className="text-amber-300 font-bold tracking-widest text-[10px]">OBJECTIVE</div><div className="font-semibold">{objective.name}</div><div className="text-slate-300">{objective.desc}</div><div className="mt-1 h-1.5 bg-white/10 rounded"><div className="h-full bg-amber-300 rounded" style={{ width: `${Math.min(100, ((game.stats[objective.stat] ?? 0) / objective.goal) * 100)}%` }} /></div></div>}
       {/* toasts */}
       <div className="absolute right-3 top-72 flex flex-col gap-1 items-end">
         {game.toasts.map((t) => <div key={t.id} className={cx('px-3 py-1.5 rounded-lg text-sm border backdrop-blur', t.kind === 'challenge' || t.kind === 'research' ? 'bg-amber-500/25 border-amber-300/50' : t.kind === 'discover' ? 'bg-cyan-500/25 border-cyan-300/50' : t.kind === 'warn' ? 'bg-rose-500/25 border-rose-300/50' : 'bg-black/55 border-white/10')} style={{ opacity: Math.min(1, t.t) }}>{t.text}</div>)}
@@ -67,9 +68,10 @@ export function Hud({ game }: { game: Game }) {
       {game.scanPings.map((q, i) => { const s = game.project(q.x, q.y, q.z); if (!s.visible || s.d < 0) return null; return <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center" style={{ left: `${s.x}%`, top: `${s.y}%`, opacity: Math.min(1, q.t / 3) }}><div className="w-2.5 h-2.5 rotate-45 border-2" style={{ borderColor: q.c, boxShadow: `0 0 8px ${q.c}` }} /><span className="text-[9px] mt-0.5" style={{ color: q.c }}>{q.n} · {Math.round(s.d)}m</span></div>; })}
       {/* bottom: status + hotbar */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+        {h.hint && <div className="px-3 py-1 rounded-full bg-black/60 border border-amber-300/40 text-[12px] text-amber-100 tracking-wide">{h.hint}</div>}
         {game.mode !== 'creative' && game.mode !== 'exploration' && <div className="flex gap-4 items-center">
-          <Bar value={h.hp / 20} color="from-rose-500 to-rose-400" label="HP" w={190} />
-          <Bar value={h.hunger / 20} color="from-amber-500 to-amber-300" label="FOOD" w={190} />
+          <Pips value={h.hp} kind="heart" shake={h.hp <= 6} />
+          <Pips value={h.hunger} kind="food" shake={h.hunger <= 4} />
           {h.air < 14.5 && <Bar value={h.air / 15} color="from-cyan-500 to-cyan-300" label="O₂" w={100} />}
         </div>}
         {game.equip.pack && <Bar value={h.jet / 100} color="from-orange-500 to-yellow-300" label="THRUST" w={150} />}
@@ -83,6 +85,19 @@ export function Hud({ game }: { game: Game }) {
       {game.p.hurtT > 0 && <div className="absolute inset-0 bg-rose-600/20" style={{ opacity: game.p.hurtT }} />}
     </div>
   );
+}
+const HEART = ['.XX..XX.', 'XXXXXXXX', 'XXXXXXXX', 'XXXXXXXX', '.XXXXXX.', '..XXXX..', '...XX...'];
+const FOODG = ['..XXXX..', '.XXXXXX.', '.XXXXXX.', '.XXXXXX.', '..XXXX..', '...XX...', '..XXXX..'];
+function Pips({ value, kind, shake }: { value: number; kind: 'heart' | 'food'; shake?: boolean }) {
+  const grid = kind === 'heart' ? HEART : FOODG;
+  const full = kind === 'heart' ? '#e8283c' : '#d99a2b', dark = kind === 'heart' ? '#4a0d14' : '#3d2a0c', hi = kind === 'heart' ? '#ff9aa4' : '#ffe08a';
+  const t = Math.floor(performance.now() / 120);
+  return <div className={cx('flex gap-0.5', kind === 'food' && 'flex-row-reverse')}>{Array.from({ length: 10 }).map((_, i) => {
+    const idx = kind === 'food' ? 9 - i : i; const f = Math.max(0, Math.min(1, (value - idx * 2) / 2));
+    return <svg key={i} width="22" height="20" viewBox="0 0 8 7" shapeRendering="crispEdges" style={{ transform: shake && (t + i) % 7 === 0 ? 'translateY(-2px)' : undefined, filter: 'drop-shadow(1px 1px 0 rgba(0,0,0,.7))' }}>
+      {grid.flatMap((row, y) => row.split('').map((c, x) => c === 'X' ? <rect key={x + ',' + y} x={x} y={y} width="1.05" height="1.05" fill={f >= 1 || (f > 0 && x < 4) ? (y === 1 && x === 1 ? hi : full) : dark} /> : null))}
+    </svg>;
+  })}</div>;
 }
 function Bar({ value, color, label, w }: { value: number; color: string; label: string; w: number }) {
   return <div className="flex items-center gap-1.5"><span className="text-[10px] font-bold tracking-widest text-slate-300 w-9 text-right">{label}</span><div className="h-3 rounded-full bg-black/55 border border-white/10 overflow-hidden" style={{ width: w }}><div className={cx('h-full bg-gradient-to-r transition-all', color)} style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div></div>;
@@ -152,7 +167,7 @@ export function ConsolePanel({ game, close }: { game: Game; close: () => void })
     <form onSubmit={(e) => { e.preventDefault(); if (!v.trim()) return close(); game.chat.push('> ' + v); game.chat.push(runCommand(game, v)); setV(''); }}><input autoFocus value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); }} placeholder="/help" className="w-full mt-1 bg-black/50 border border-white/10 rounded px-2 py-1 text-slate-100 outline-none focus:border-amber-300/60" /></form></div></div>;
 }
 export function DeathScreen({ game }: { game: Game }) {
-  return <div className="absolute inset-0 bg-rose-950/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4 pointer-events-auto"><div className="text-5xl font-black tracking-[0.3em] text-rose-200">SIGNAL LOST</div><div className="text-slate-300">Your suit's emergency beacon is rebooting…</div><button className={btnP} onClick={() => { game.respawn(); }}>Re-deploy</button></div>;
+  return <div className="absolute inset-0 bg-rose-950/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4 pointer-events-auto"><div className="text-5xl font-black tracking-[0.3em] text-rose-200">SIGNAL LOST</div><div className="text-slate-300">Your suit's emergency beacon is rebooting…</div><div className="text-xs text-slate-400 max-w-sm text-center">Tip: {['Place a Frontline Beacon — you respawn there.', 'Machines cannot enter a beacon zone.', 'Fight Wardens from the side, they slam forward.', 'Ladders and water cancel fall damage.', 'Eat before you are starving: right-click food.'][Math.floor(game.p.health + (game.stats.machines ?? 0) + 5) % 5]}</div><button className={btnP} onClick={() => { game.respawn(); }}>Re-deploy</button></div>;
 }
 
 // ====================================================================== settings
@@ -225,25 +240,4 @@ export function ModManager({ reports, close }: { reports: ModReport[]; close: ()
     </div></div>;
 }
 
-// ====================================================================== main menu
-export function MainMenu({ worlds, onPlay, onNew, onDelete, onSettings, onMods, backend, modCount }: { worlds: WorldMeta[]; onPlay: (w: WorldMeta) => void; onNew: (name: string, seed: string, mode: WorldMeta['mode']) => void; onDelete: (id: string) => void; onSettings: () => void; onMods: () => void; backend: string; modCount: number }) {
-  const [creating, setCreating] = useState(false); const [name, setName] = useState('Frontier'); const [seed, setSeed] = useState(''); const [mode, setMode] = useState<WorldMeta['mode']>('survival');
-  const modes: [WorldMeta['mode'], string, string][] = [['survival', 'Survival', 'Gather, craft, build and push back the machines.'], ['creative', 'Creative', 'Unlimited blocks, flight, instant build.'], ['exploration', 'Exploration', 'No hunger or danger. Discover landmarks and secrets.'], ['challenge', 'Sandbox Challenges', 'Survival with objectives and frequent world events.']];
-  return <div className="absolute inset-0 overflow-auto bg-slate-950 text-slate-100">
-    <div className="absolute inset-0 opacity-70" style={{ background: 'radial-gradient(1200px 600px at 70% 10%, rgba(255,160,40,.25), transparent), radial-gradient(900px 600px at 10% 90%, rgba(40,200,255,.18), transparent), linear-gradient(180deg,#05070d,#0b1220 60%,#141018)' }} />
-    <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px)', backgroundSize: '48px 48px', maskImage: 'linear-gradient(180deg,transparent,black 40%,black)' }} />
-    <svg className="absolute bottom-0 left-0 w-full h-1/2 opacity-60" viewBox="0 0 1200 300" preserveAspectRatio="none"><g fill="#0a0f1a">{Array.from({ length: 34 }).map((_, i) => { const h = 60 + ((i * 53) % 170); return <rect key={i} x={i * 36} y={300 - h} width={26 + (i % 3) * 6} height={h} />; })}</g><g fill="#ffcf70" opacity=".8">{Array.from({ length: 90 }).map((_, i) => <rect key={i} x={((i * 97) % 1190)} y={120 + ((i * 41) % 170)} width="3" height="3" />)}</g></svg>
-    <div className="relative z-10 max-w-5xl mx-auto px-6 py-10 flex flex-col min-h-full">
-      <div className="mb-8"><div className="text-amber-300 tracking-[0.5em] text-xs font-bold">A VOXEL SANDBOX OF THE LAST FRONTIER</div><h1 className="text-6xl md:text-7xl font-black tracking-tight leading-none mt-2"><span className="bg-gradient-to-b from-white to-slate-400 bg-clip-text text-transparent">FRONTLINE</span> <span className="text-amber-400">ZERO HOUR</span></h1><p className="mt-4 text-slate-300 max-w-2xl">The cities went quiet at 06:00. The machines still walk the streets. Light a beacon, claim the ground beneath your feet, and push the frontline outward — block by block.</p></div>
-      <div className="grid md:grid-cols-[1fr_320px] gap-6">
-        <div className={cx(panel, 'p-5')}>{!creating ? <><div className="flex items-center justify-between mb-3"><b className="tracking-[0.25em] text-sm text-slate-300">WORLDS</b><button className={btnP} onClick={() => setCreating(true)}>+ New World</button></div>
-          {worlds.length === 0 && <div className="text-slate-400 py-10 text-center border border-dashed border-white/10 rounded-xl">No saved worlds yet. Create one to begin your deployment.</div>}
-          <div className="space-y-2 max-h-80 overflow-auto">{worlds.map((w) => <div key={w.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-amber-300/50 transition"><div className="flex-1"><div className="font-bold">{w.name}</div><div className="text-xs text-slate-400 capitalize">{w.mode} · seed {w.seed} · {new Date(w.played).toLocaleString()}</div></div><button className={btnP + ' !py-1.5'} onClick={() => onPlay(w)}>Play</button><button className={btn + ' !py-1.5 text-xs'} onClick={() => confirm('Delete this world?') && onDelete(w.id)}>Delete</button></div>)}</div></>
-          : <div className="space-y-3"><b className="tracking-[0.25em] text-sm text-slate-300">NEW WORLD</b><div className="grid grid-cols-2 gap-2"><input className="bg-black/40 border border-white/10 rounded px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} placeholder="World name" /><input className="bg-black/40 border border-white/10 rounded px-3 py-2" value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="Seed (random)" /></div>
-            <div className="grid grid-cols-2 gap-2">{modes.map(([k, t, d]) => <button key={k} onClick={() => setMode(k)} className={cx('text-left p-3 rounded-xl border transition', mode === k ? 'border-amber-300 bg-amber-300/10' : 'border-white/10 bg-white/5 hover:bg-white/10')}><div className="font-bold">{t}</div><div className="text-xs text-slate-400">{d}</div></button>)}</div>
-            <div className="flex gap-2"><button className={btnP} onClick={() => onNew(name || 'Frontier', seed, mode)}>Deploy</button><button className={btn} onClick={() => setCreating(false)}>Cancel</button></div></div>}</div>
-        <div className="flex flex-col gap-3"><button className={cx(btn, 'text-left p-4')} onClick={onSettings}>⚙ Settings & Controls</button><button className={cx(btn, 'text-left p-4')} onClick={onMods}>🧩 Mod Manager <span className="text-xs text-slate-400">({modCount} active)</span></button>
-          <div className={cx(panel, 'p-4 text-xs text-slate-300 space-y-1')}><div className="text-amber-300 font-bold tracking-widest">QUICK START</div><div>WASD move · Space jump · Shift sneak · Ctrl sprint</div><div>Left click mine · Right click place/use · E inventory</div><div>1-9 hotbar · F scan · V camera · T console</div><div className="pt-1 text-slate-400">Renderer: <b className="text-emerald-300">{backend}</b> — {Reg.blocks.length - 1} blocks, {Reg.recipes.length} recipes</div></div></div>
-      </div></div></div>;
-}
 export { DEFAULT_SETTINGS };

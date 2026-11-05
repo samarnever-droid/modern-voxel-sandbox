@@ -44,7 +44,7 @@ class Cv {
     this.d[i] = c[0]; this.d[i + 1] = c[1]; this.d[i + 2] = c[2]; this.d[i + 3] = a;
   }
   get(x: number, y: number): RGB {
-    x = ((x % TS) + TS) % TS; y = ((y % TS) + TS) % TS;
+    x = (((Math.floor(x)) % TS) + TS) % TS; y = (((Math.floor(y)) % TS) + TS) % TS;
     const i = (y * TS + x) * 4;
     return [this.d[i], this.d[i + 1], this.d[i + 2]];
   }
@@ -169,6 +169,16 @@ const PAINTERS: Record<string, Painter> = {
       const u = (x + (Math.floor(y / 8) % 2) * 4) % 8, v = y % 8;
       if (Math.abs(u - 4 + (v - 4)) < 1.2 || Math.abs(u - 4 - (v - 4)) < 1.2) c.set(x, y, cx >= 0 ? h : b);
     }
+  },
+  brushed(c, base, hi) {
+    const b = col(base), h = col(hi);
+    for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++) {
+      const streak = (c.vn(x * 0.4, y * 6, 5) - 0.5) * 0.28;
+      let f = 1 + streak;
+      if (x < 2 || x >= TS - 2) f *= 0.82; if (y < 1) f *= 1.12; if (y >= TS - 1) f *= 0.86;
+      c.set(x, y, [(b[0] + (h[0] - b[0]) * Math.max(0, streak * 2)) * f, (b[1] + (h[1] - b[1]) * Math.max(0, streak * 2)) * f, (b[2] + (h[2] - b[2]) * Math.max(0, streak * 2)) * f]);
+    }
+    c.jitter(5);
   },
   grate(c, base, hole) {
     c.fill(col(hole));

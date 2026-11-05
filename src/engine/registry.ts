@@ -235,7 +235,12 @@ export function blockBoxes(b: Block, state: number, conn = 0): BoxDef[] {
     case 'carpet': return [{ b: [0, 0, 0, 1, 0.0625, 1] }];
     case 'cross': return [{ b: [0.1, 0, 0.1, 0.9, 0.9, 0.9] }];
     case 'panel': return [R([0, 0, 0.8125, 1, 1, 1])];
-    case 'ladder': return [R([0, 0, 0.875, 1, 1, 1])];
+    case 'ladder': {
+      // two side rails + four evenly spaced rungs per block (repeats seamlessly block to block), hugging the wall at +z (facing-rotated)
+      const o: BoxDef[] = [R([0.09, 0, 0.8125, 0.2, 1, 1]), R([0.8, 0, 0.8125, 0.91, 1, 1])];
+      for (let i = 0; i < 4; i++) o.push(R([0.2, 0.06 + i * 0.25, 0.86, 0.8, 0.15 + i * 0.25, 0.96]));
+      return o;
+    }
     case 'pole': {
       const o: BoxDef[] = [{ b: [0.375, 0, 0.375, 0.625, 1, 0.625] }];
       if (conn & 1) o.push({ b: [0.4, 0.4, 0.625, 0.6, 0.6, 1] }); if (conn & 2) o.push({ b: [0, 0.4, 0.4, 0.375, 0.6, 0.6] });
@@ -263,4 +268,10 @@ export function blockBoxes(b: Block, state: number, conn = 0): BoxDef[] {
     case 'custom': return (b.boxes ?? [{ b: [0, 0, 0, 1, 1, 1] }]).map((x) => ({ b: _rot(x.b, f), t: x.t }));
   }
   return [{ b: [0, 0, 0, 1, 1, 1] }];
+}
+
+/** Boxes used for aiming/selection: thin models (ladders) get a forgiving full-size slab. */
+export function pickBoxes(b: Block, state: number, conn = 0): BoxDef[] {
+  if (b.shape === 'ladder') return [{ b: _rot([0, 0, 0.75, 1, 1, 1], state & 3) }];
+  return blockBoxes(b, state, conn);
 }

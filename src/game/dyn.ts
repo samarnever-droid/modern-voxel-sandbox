@@ -37,6 +37,21 @@ export class Dyn {
       for (const k of [0, 1, 2, 0, 2, 3]) this.v(pts[k][0], pts[k][1], pts[k][2], nn[0], nn[1], nn[2], r, g, b, a, e);
     }
   }
+  /** box with an arbitrary 3x3 rotation (row-major) — used by the articulated mob / player rigs. `grad` darkens the underside for a softer, more sculpted look. */
+  boxR(cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, R: number[], col: number[], a = 1, e = 0, grad = 0.28) {
+    if (this.n + 36 > MAX_DYN) return;
+    const ap = (x: number, y: number, z: number): [number, number, number] => [R[0] * x + R[1] * y + R[2] * z, R[3] * x + R[4] * y + R[5] * z, R[6] * x + R[7] * y + R[8] * z];
+    for (const F of FACES) {
+      const nn = ap(F.n[0], F.n[1], F.n[2]);
+      const shade = 0.74 + 0.2 * nn[1] + (Math.abs(nn[0]) * 0.04) - (nn[1] < -0.5 ? 0.14 : 0);
+      const pts = F.c.map((c) => { const p = ap(c[0] * sx, c[1] * sy, c[2] * sz); return [cx + p[0], cy + p[1], cz + p[2], c[1]]; });
+      for (const k of [0, 1, 2, 0, 2, 3]) {
+        const g = 1 - grad * (0.5 - pts[k][3]) * (e > 0.5 ? 0 : 1);
+        const s = shade * Math.max(0.4, g);
+        this.v(pts[k][0], pts[k][1], pts[k][2], nn[0], nn[1], nn[2], col[0] * s, col[1] * s, col[2] * s, a, e);
+      }
+    }
+  }
   quad(cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, ux: number, uy: number, uz: number, col: number[], a: number, e: number) {
     const p = [[cx - rx - ux, cy - ry - uy, cz - rz - uz], [cx + rx - ux, cy + ry - uy, cz + rz - uz], [cx + rx + ux, cy + ry + uy, cz + rz + uz], [cx - rx + ux, cy - ry + uy, cz - rz + uz]];
     const nx = ry * uz - rz * uy, ny = rz * ux - rx * uz, nz = rx * uy - ry * ux;

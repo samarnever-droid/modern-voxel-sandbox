@@ -13,13 +13,14 @@ it('boots into the main menu with all systems registered', async () => {
   await act(async () => { await new Promise((r) => setTimeout(r, 1500)); });
   const text = document.body.textContent ?? '';
   expect(text).toContain('ZERO HOUR');
-  expect(text).toContain('New World');
-  expect(text).toContain('Mod Manager');
+  expect(text).toContain('QUICK START');
+  expect(text).toContain('How to Play');
+  expect(text).toContain('Mods (');
   // open settings + mod manager overlays
   const buttons = [...document.querySelectorAll('button')];
-  await act(async () => { buttons.find((b) => b.textContent?.includes('Mod Manager'))!.click(); });
+  await act(async () => { buttons.find((b) => b.textContent?.includes('Mods ('))!.click(); });
   expect(document.body.textContent).toContain('Import .json');
   await act(async () => { [...document.querySelectorAll('button')].find((b) => b.textContent === '✕')!.click(); });
-  await act(async () => { [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Settings'))!.click(); });
+  await act(async () => { [...document.querySelectorAll('button')].find((b) => b.textContent === 'Settings')!.click(); });
   expect(document.body.textContent).toContain('View distance');
 }, 30000);

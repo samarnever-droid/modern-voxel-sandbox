@@ -1,7 +1,7 @@
 /** The Game: player, input, chunk streaming, interaction, survival, progression and per-frame render assembly. */
 import { mat4, clamp, smoothstep, lerp } from '../engine/math';
 import { hash01, hashInt } from '../engine/noise';
-import { Reg, ID, Block, S_ON, S_TOP, S_UPPER, S_POWER, DX, DZ, SOLID, LIQ } from '../engine/registry';
+import { pickBoxes, Reg, ID, Block, S_ON, S_TOP, S_UPPER, S_POWER, DX, DZ, SOLID, LIQ, FULL } from '../engine/registry';
 import { World, Chunk, ckey, CH, CVOL, collisionBoxes } from '../world/world';
 import { Generator, BIOME_INFO } from '../world/gen';
 import { meshChunk } from '../world/mesher';
@@ -12,13 +12,15 @@ import { audio, Mood } from '../audio/audio';
 import { WorldMeta, makePalette, buildRemap, saveChunk, saveWorldMeta, unrle } from '../save/persist';
 import { emitMod, setModHost, modRuntime } from '../mods/loader';
 import { LORE } from '../content';
+import { guideTick, contextHint } from './guide';
+import { drawAvatar } from './mobs';
 
 export interface Stack { key: string; n: number; dur?: number }
 export interface Settings {
   quality: 'low' | 'medium' | 'high' | 'ultra'; viewDist: number; fov: number; sens: number; invertY: boolean; reduceMotion: boolean; uiScale: number; highContrast: boolean;
   master: number; music: number; sfx: number; ambience: number; sprintToggle: boolean; showFps: boolean; keys: Record<string, string>; renderScale: number;
 }
-export const DEFAULT_KEYS: Record<string, string> = { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sneak: 'ShiftLeft', sprint: 'ControlLeft', inventory: 'KeyE', drop: 'KeyQ', perspective: 'KeyV', console: 'KeyT', gadget: 'KeyF', map: 'KeyM', fly: 'KeyX' };
+export const DEFAULT_KEYS: Record<string, string> = { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sneak: 'ShiftLeft', sprint: 'ControlLeft', inventory: 'KeyE', drop: 'KeyQ', perspective: 'KeyV', console: 'KeyT', gadget: 'KeyF', map: 'KeyM', fly: 'KeyX', help: 'KeyH', guide: 'KeyG' };
 export const DEFAULT_SETTINGS: Settings = { quality: 'high', viewDist: 8, fov: 75, sens: 1, invertY: false, reduceMotion: false, uiScale: 1, highContrast: false, master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.6, sprintToggle: false, showFps: true, keys: { ...DEFAULT_KEYS }, renderScale: 1 };
 
 const STATIONS: Record<string, string[]> = { workbench: ['workbench'], smelter: ['smelter'], fabricator: ['fabricator'], research: ['lab'], foundry: ['foundry'] };
@@ -48,12 +50,12 @@ export class Game {
   cooldown = new Map<string, number>(); hook: { x: number; y: number; z: number; t: number } | null = null;
   scanPings: { x: number; y: number; z: number; c: string; t: number; n: string }[] = [];
   waypoint: { x: number; z: number; name: string } | null = null;
-  panel: 'none' | 'inventory' | 'container' | 'terminal' | 'pause' | 'console' | 'map' = 'none';
+  panel: 'none' | 'inventory' | 'container' | 'terminal' | 'pause' | 'console' | 'map' | 'help' = 'none';
   panelData: any = null; tab = 'inventory'; chat: string[] = []; toasts: { id: number; text: string; t: number; kind: string }[] = []; toastId = 1;
   hud: any = {}; fps = 60; frames = 0; fpsT = 0; running = false; paused = false; last = 0; raf = 0;
   lastCx = 1e9; lastCz = 1e9; ring: number[][] = []; saved = new Map<string, any>(); remap: Uint16Array | null = null; urgent = new Set<Chunk>();
   swingT = 0; equipAnim = 0; bob = 0; shake = 0; vp = mat4.create(); eyeY = 1.62; autoSave = 30; modified = new Set<Chunk>(); stations = new Set<string>(['hand']); stationT = 0; minimap: HTMLCanvasElement | null = null; mapT = 0;
-  lightFlash = 0; pendingTip = ''; subtitle = ''; pickups: { key: string; n: number; t: number }[] = []; lastMood: Mood = 'explore'; combatT = 0; discT = 0; sprintLatch = false; tickListeners = new Set<() => void>();
+  lightFlash = 0; pendingTip = ''; subtitle = ''; pickups: { key: string; n: number; t: number }[] = []; lastMood: Mood = 'explore'; combatT = 0; hitT = 0; guideFlash = 0; guideOn = true; helpTab = 'basics'; discT = 0; sprintLatch = false; tickListeners = new Set<() => void>();
 
   constructor(canvas: HTMLCanvasElement | null, renderer: Renderer | null, meta: WorldMeta, settings: Settings) {
     this.canvas = canvas; this.renderer = renderer; this.meta = meta; this.mode = meta.mode; this.settings = settings; this.q = { ...QUALITY[settings.quality], viewDist: settings.viewDist };
@@ -67,7 +69,7 @@ export class Game {
       const s = this.gen.findSpawn(); this.spawn = s; Object.assign(this.p, { x: s.x + 0.5, y: s.y + 0.5, z: s.z + 0.5, yaw: 2.4 });
       this.inv[0] = { key: 'salvage_cutter', n: 1, dur: 160 }; this.inv[1] = { key: 'ration_bar', n: 3 };
       if (this.mode === 'exploration') { this.addItem('scanner', 1); this.addItem('tether_hook', 1); this.addItem('canned_stew', 4); }
-      if (this.mode === 'survival' || this.mode === 'challenge') { this.addItem('scrap_metal', 6); this.addItem('timber_planks', 8); this.addItem('frontline_beacon', 1); this.pendingTip = 'Deploy your Frontline Beacon (right-click the ground) to claim land, then craft a Workbench in the inventory (E).'; }
+      if (this.mode === 'survival' || this.mode === 'challenge') { this.addItem('scrap_metal', 6); this.addItem('timber_planks', 14); this.addItem('frontline_beacon', 1); this.pendingTip = 'Welcome! Follow the GUIDE card in the top-left corner. Press H any time for the full manual.'; }
       if (this.mode === 'creative') this.p.flying = true;
     }
     this.remap = buildRemap(m.palette);
@@ -139,7 +141,7 @@ export class Game {
     for (const [k, n] of Object.entries(r.in)) this.removeItem(k, n);
     const outKey = r.out === 'steel_ingot_scrap' ? 'steel_ingot' : r.out;
     if (this.addItem(outKey, r.n) > 0) this.sim.drop(this.p.x, this.p.y + 1, this.p.z, outKey, r.n);
-    audio.sfx('craft'); this.stat('crafted', 1); emitMod('crafted', { item: outKey }); return true;
+    audio.sfx('craft'); this.stats['made_' + outKey] = (this.stats['made_' + outKey] ?? 0) + r.n; this.stat('crafted', 1); emitMod('crafted', { item: outKey }); return true;
   }
   canResearch(n: { key: string; cost: Record<string, number>; requires: string[] }) { if (this.tech.has(n.key)) return false; if (!n.requires.every((q) => this.tech.has(q))) return false; if (!this.hasStation('lab') && this.mode !== 'creative') return false; for (const [k, c] of Object.entries(n.cost)) if (this.count(k) < c) return false; return true; }
   research(n: { key: string; name: string; cost: Record<string, number>; requires: string[] }) { if (!this.canResearch(n)) return false; for (const [k, c] of Object.entries(n.cost)) this.removeItem(k, c); this.tech.add(n.key); audio.sfx('research'); this.notify(`Research complete: ${n.name}`, 'research'); this.stat('research', 1); emitMod('research', { key: n.key }); return true; }
@@ -186,6 +188,7 @@ export class Game {
     if (b.shape === 'door') { const oy = st & S_UPPER ? y - 1 : y + 1; if (this.world.getBlock(x, oy, z) === id) this.setBlock(x, oy, z, 0, 0, true); }
     if (!silent) { this.sim.blockChips(x, y, z, b, 14); audio.sfx('break:' + b.snd, [x + 0.5, y + 0.5, z + 0.5]); }
     this.setBlock(x, y, z, 0, 0, true);
+    if (b.shape === 'cube') this.popUnsupported(x, y, z);
     const d = this.dropsFor(b, tool);
     if (d && this.mode !== 'creative') this.sim.drop(x + 0.5, y + 0.5, z + 0.5, d[0], d[1]);
     this.stat('blocks_broken', 1); emitMod('block_broken', { x, y, z, block: b.key });
@@ -198,6 +201,12 @@ export class Game {
     let x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
     const tb = Reg.blocks[hit.id]!;
     if (tb.shape === 'cross' || tb.shape === 'liquid') { x = hit.x; y = hit.y; z = hit.z; }
+    let ladderSt = -1;
+    if (it.shape === 'ladder') {
+      const r = this.ladderSpot(hit);
+      if (!r) { this.notify('Ladders need a solid wall behind them — click the side of a block.', 'warn'); return false; }
+      x = r.x; y = r.y; z = r.z; ladderSt = r.st;
+    }
     const cur = Reg.blocks[this.world.getBlock(x, y, z)];
     if (this.world.getBlock(x, y, z) !== 0 && !(cur && (cur.shape === 'cross' || cur.shape === 'liquid'))) return false;
     if (y < 1 || y >= CH - 1) return false;
@@ -207,7 +216,8 @@ export class Game {
     for (let f = 0; f < 4; f++) { const d = -(DX[f] * hx + DZ[f] * hz); if (d > best) { best = d; facing = f; } }
     let st = 0;
     if (it.rot === 'facing4') st = facing;
-    if (it.shape === 'panel' || it.shape === 'ladder') { if (hit.ny !== 0) return false; for (let f = 0; f < 4; f++) if (DX[f] === hit.nx && DZ[f] === hit.nz) st = f; }
+    if (it.shape === 'panel') { if (hit.ny !== 0) return false; for (let f = 0; f < 4; f++) if (DX[f] === -hit.nx && DZ[f] === -hit.nz) st = f; }
+    if (ladderSt >= 0) st = ladderSt;
     if (it.shape === 'slab' || it.shape === 'stair' || it.shape === 'trapdoor') { const fy = hit.t > 0 ? this.eyeRay.y + this.eyeRay.dy * hit.t - hit.y : 0.5; if (hit.ny === -1 || (hit.ny === 0 && fy > 0.5)) st |= S_TOP; }
     if (it.shape === 'door') { if (this.world.getBlock(x, y + 1, z) !== 0 || !SOLID[this.world.getBlock(x, y - 1, z)]) return false; }
     if (it.shape === 'cross' && !SOLID[this.world.getBlock(x, y - 1, z)] && it.key !== 'vine_curtain') return false;
@@ -220,6 +230,38 @@ export class Game {
     audio.sfx('place:' + it.snd, [x + 0.5, y + 0.5, z + 0.5]);
     this.stat('blocks_placed', 1); emitMod('block_placed', { x, y, z, block: it.key });
     return true;
+  }
+  /** Where (and facing which wall) a ladder goes: extends existing ladders, otherwise hugs the wall that was clicked / that the player is facing. */
+  ladderSpot(hit: NonNullable<Game['target']>): { x: number; y: number; z: number; st: number } | null {
+    const w = this.world, p = this.p;
+    const wall = (px: number, py: number, pz: number, f: number) => { const id = w.getBlock(px + DX[f], py, pz + DZ[f]); return id !== 0 && FULL[id] === 1 && SOLID[id] === 1; };
+    const free = (px: number, py: number, pz: number) => { if (py < 1 || py >= CH - 1) return false; const id = w.getBlock(px, py, pz); const b = Reg.blocks[id]; return id === 0 || b?.shape === 'cross' || b?.shape === 'liquid'; };
+    const tb = Reg.blocks[hit.id]!;
+    if (tb.shape === 'ladder') {
+      const f = w.getState(hit.x, hit.y, hit.z) & 3;
+      const fy = hit.t > 0 ? this.eyeRay.y + this.eyeRay.dy * hit.t - hit.y : 0.5;
+      const dir = hit.ny < 0 ? -1 : hit.ny > 0 ? 1 : fy > 0.5 ? 1 : -1;
+      let y = hit.y;
+      while (Reg.blocks[w.getBlock(hit.x, y, hit.z)]?.shape === 'ladder' && (w.getState(hit.x, y, hit.z) & 3) === f && Math.abs(y - hit.y) < 64) y += dir;
+      if (free(hit.x, y, hit.z) && wall(hit.x, y, hit.z, f)) return { x: hit.x, y, z: hit.z, st: f };
+      return null;
+    }
+    const x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
+    if (!free(x, y, z)) return null;
+    if (hit.ny === 0) { for (let f = 0; f < 4; f++) if (DX[f] === -hit.nx && DZ[f] === -hit.nz) return wall(x, y, z, f) ? { x, y, z, st: f } : null; return null; }
+    // clicked a floor/ceiling: use the wall the player is facing
+    const hx = -Math.sin(p.yaw), hz = -Math.cos(p.yaw);
+    const order = [0, 1, 2, 3].sort((a, b) => (DX[b] * hx + DZ[b] * hz) - (DX[a] * hx + DZ[a] * hz));
+    for (const f of order) if (wall(x, y, z, f)) return { x, y, z, st: f };
+    return null;
+  }
+  /** ladders / panels pop off when the block they hang on is removed */
+  popUnsupported(x: number, y: number, z: number) {
+    for (let f = 0; f < 4; f++) {
+      const nx = x - DX[f], nz = z - DZ[f]; // a neighbour whose wall (DX[f],DZ[f]) points at (x,z)
+      const id = this.world.getBlock(nx, y, nz), b = Reg.blocks[id];
+      if (b && b.shape === 'ladder' && (this.world.getState(nx, y, nz) & 3) === f) { this.setBlock(nx, y, nz, 0, 0, true); this.sim.drop(nx + 0.5, y + 0.5, nz + 0.5, b.key, 1); audio.sfx('break:' + b.snd, [nx + 0.5, y + 0.5, nz + 0.5], 0.6); }
+    }
   }
   eyeRay = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1 };
 
@@ -473,18 +515,35 @@ export class Game {
       p.sprint = wantSprint;
       let sp = p.flying ? (p.sprint ? 18 : 10.5) : p.sneak ? 1.8 : p.sprint ? 6.4 : 4.3;
       if (p.inWater && !p.flying) sp *= 0.55;
+      let lst = 0;
+      const lc = (dy: number) => { const X = Math.floor(p.x), Y = Math.floor(p.y + dy), Z = Math.floor(p.z); const b = Reg.blocks[w.getBlock(X, Y, Z)]; if (b?.climb) { lst = w.getState(X, Y, Z) & 3; return b; } return null; };
+      const lb = p.flying ? null : (lc(0.15) ?? lc(1.0));
+      this.onLadder = !!lb; this.ladderT = Math.max(0, this.ladderT - dt);
+      if (lb) sp *= 0.5;
+      const ladderPull = lb && lb.shape === 'ladder' ? lst : -1;
       const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw);
       const wx = (fx * cy + fz * sy) * sp, wz = (-fx * sy + fz * cy) * sp;
       const acc = p.onGround || p.flying ? 14 : 3.5;
       p.vx += (wx - p.vx) * Math.min(1, acc * dt); p.vz += (wz - p.vz) * Math.min(1, acc * dt);
+      if (ladderPull >= 0) { p.vx += DX[ladderPull] * 6 * dt; p.vz += DZ[ladderPull] * 6 * dt; }  // cling to the wall side
       const jump = live && this.key('jump');
       if (p.flying) { p.vy += (((jump ? 1 : 0) - (sneak ? 1 : 0)) * (p.sprint ? 14 : 8) - p.vy) * Math.min(1, 8 * dt); }
       else {
-        const climbing = Reg.blocks[w.getBlock(Math.floor(p.x), Math.floor(p.y + 0.5), Math.floor(p.z))]?.climb;
-        if (climbing) { p.vy = jump ? 3.6 : sneak ? -3 : Math.max(p.vy, -1.5) * 0.8 - 0; if (!jump && !sneak) p.vy = 0; p.fall = 0; }
+        if (lb) {
+          const fwdK = this.key('forward'), backK = this.key('back');
+          let tv = 0;
+          if (sneak) tv = 0; else if (jump || (fwdK && p.pitch > -0.5)) tv = 3.4; else if (backK || fwdK) tv = -3.6;
+          p.vy += (tv - p.vy) * Math.min(1, 14 * dt); p.fall = 0; this.ladderT = 0.28;
+          if (p.vy > 0) this.stats.climbed = (this.stats.climbed ?? 0) + p.vy * dt;
+          this.climbAcc += Math.abs(p.vy) * dt;
+          if (this.climbAcc > 0.85) { this.climbAcc = 0; audio.sfx('step:' + lb.snd, [p.x, p.y, p.z], 0.55); }
+        }
         else if (p.inWater) { p.vy += ((jump ? 3.4 : -1.6) - p.vy) * Math.min(1, 4 * dt); p.fall = 0; }
-        else { p.vy -= 27 * dt; if (p.vy < -48) p.vy = -48; }
-        if (jump && p.onGround && !p.inWater) { p.vy = 8.6; p.onGround = false; audio.sfx('step:' + this.groundMat(), [p.x, p.y, p.z], 1.2); }
+        else {
+          if (this.ladderT > 0 && p.vy >= 0 && !p.onGround && (jump || this.key('forward'))) { p.vy = Math.max(p.vy, 4.8); this.ladderT = 0; }  // hop over the top edge
+          p.vy -= 27 * dt; if (p.vy < -48) p.vy = -48;
+        }
+        if (jump && p.onGround && !p.inWater && !lb) { p.vy = 8.6; p.onGround = false; this.stats.jumps = (this.stats.jumps ?? 0) + 1; audio.sfx('step:' + this.groundMat(), [p.x, p.y, p.z], 1.2); }
         // thruster pack
         if (this.equip.pack?.key === 'thruster_pack' && jump && !p.onGround && !p.inWater) { if (p.jetFuel > 0) { p.vy = Math.min(p.vy + 40 * dt, 7); p.jetFuel -= 30 * dt; if (Math.random() < 0.3) { this.sim.burst(p.x, p.y, p.z, 'spark', 2); audio.sfx('thruster'); } } }
         if (p.onGround) p.jetFuel = Math.min(100, p.jetFuel + 60 * dt); else if (!jump) p.jetFuel = Math.min(100, p.jetFuel + 10 * dt);
@@ -505,6 +564,8 @@ export class Game {
       if (p.hunger <= 0) { p.starve += dt; if (p.starve > 4) { p.starve = 0; this.hurt(1, 'hunger'); } }
       if (p.under) { p.air -= dt; if (p.air < 0) { p.air = 0; p.regen += dt; if (p.regen > 1) { p.regen = 0; this.hurt(2, 'drown'); } } } else p.air = Math.min(15, p.air + dt * 6);
     } else { p.hunger = 20; p.health = 20; p.air = 15; }
+    this.hitT = Math.max(0, this.hitT - dt);
+    if (p.flying) { const fs = Math.hypot(p.vx, p.vy, p.vz); if (fs > 3) this.stats.flew = (this.stats.flew ?? 0) + dt; }
     // fall landing handled in move()
     if (!p.dead && !inUI) this.interactTick(dt);
     this.sim.update(dt);
@@ -579,7 +640,7 @@ export class Game {
     if (p.inWater && !this.wasInWater) audio.sfx('splash', [p.x, p.y, p.z]);
     this.wasInWater = p.inWater;
   }
-  wasInWater = false;
+  wasInWater = false; onLadder = false; ladderT = 0; climbAcc = 0;
 
   interactTick(dt: number) {
     const e = this.eye(), d = this.look(), p = this.p;
@@ -634,6 +695,7 @@ export class Game {
     if (/^Digit[1-9]$/.test(code) && this.panel === 'none') this.hot = parseInt(code.slice(5)) - 1;
     if (code === k.perspective) this.third = !this.third;
     if (code === k.gadget && this.locked) { for (let i = 0; i < 9; i++) { const it = Reg.items.get(this.inv[i]?.key ?? ''); if (it?.key === 'scanner') { const old = this.hot; this.hot = i; this.useItem(); this.hot = old; break; } } }
+    if (code === k.guide && this.panel === 'none') this.guideOn = !this.guideOn;
     if (code === k.fly && this.mode === 'creative') this.p.flying = !this.p.flying;
     if (code === k.jump) { const now = performance.now() / 1000; if (now - this.p.lastJump < 0.3 && this.mode === 'creative') { this.p.flying = !this.p.flying; } this.p.lastJump = now; }
     if (code === k.drop && this.panel === 'none' && this.locked) { const s = this.held(); if (s) { this.sim.drop(this.p.x - Math.sin(this.p.yaw) * 0.8, this.p.y + 1.3, this.p.z - Math.cos(this.p.yaw) * 0.8, s.key, 1); s.n--; if (s.n <= 0) this.inv[this.hot] = null; } }
@@ -653,6 +715,8 @@ export class Game {
     for (let i = 0; i < 3; i++) this.fog[i] += (tf[i] - this.fog[i]) * k;
     const tm = this.biome === 'industrial' ? 1.5 : this.biome === 'research' ? 1.6 : this.biome === 'desert' ? 1.2 : this.biome === 'snowpeak' ? 1.8 : 1;
     this.fogMul += (tm - this.fogMul) * k;
+    this.guideT -= dt; this.guideFlash = Math.max(0, this.guideFlash - dt);
+    if (this.guideT <= 0) { this.guideT = 0.4; guideTick(this); }
     this.stationT -= dt;
     if (this.stationT <= 0) {
       this.stationT = 0.5; this.stations = new Set(['hand']);
@@ -684,7 +748,7 @@ export class Game {
     this.autoSave -= dt; if (this.autoSave <= 0) { this.autoSave = 30; this.save().catch(() => {}); }
     for (const l of this.tickListeners) l();
   }
-  discT2 = 0;
+  discT2 = 0; guideT = 1;
 
   // ------------------------------------------------------------------ rendering
   project(x: number, y: number, z: number): { x: number; y: number; visible: boolean; d: number } {
@@ -754,14 +818,7 @@ export class Game {
   drawPlayerAndHeld(eye: number[], look: number[], view: Float32Array, t: number) {
     const o = this.dynO, p = this.p, s = this.held(), it = this.heldItem();
     const lv = this.world.getLight(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z)); const L = Math.min(1, 0.25 + Math.max((lv >> 4) / 15 * (0.2 + this.dayFactor * 0.8), (lv & 15) / 15));
-    if (this.third && !p.dead) {
-      const sw = Math.sin(this.bob * 1.4) * 0.7 * Math.min(1, Math.hypot(p.vx, p.vz) / 4), yaw = p.yaw + Math.PI;
-      const sx = Math.cos(yaw), sz = -Math.sin(yaw);
-      const col = (r: number, g: number, b: number) => [r * L, g * L, b * L];
-      o.box(p.x, p.y + 1.05, p.z, 0.5, 0.7, 0.28, yaw, 0, col(0.15, 0.55, 0.65)); o.box(p.x, p.y + 1.62, p.z, 0.42, 0.42, 0.42, yaw, 0, col(0.85, 0.7, 0.55)); o.box(p.x - Math.sin(yaw) * 0.2 * -1, p.y + 1.64, p.z - Math.cos(yaw) * 0.2 * -1, 0.36, 0.12, 0.05, yaw, 0, [0.3, 0.9, 1], 1, 1);
-      for (const sgn of [-1, 1]) { o.box(p.x + sx * 0.36 * sgn, p.y + 1.05, p.z + sz * 0.36 * sgn, 0.2, 0.7, 0.2, yaw, sw * sgn, col(0.15, 0.5, 0.6), 1, 0, 0.3); o.box(p.x + sx * 0.13 * sgn, p.y + 0.35, p.z + sz * 0.13 * sgn, 0.22, 0.7, 0.24, yaw, -sw * sgn, col(0.2, 0.22, 0.28), 1, 0, 0.3); }
-      if (this.equip.pack) o.box(p.x - look[0] * 0.2 * 0, p.y + 1.1, p.z, 0.4, 0.5, 0.2, yaw, 0, col(0.3, 0.3, 0.34), 1, 0);
-    }
+    if (this.third && !p.dead) drawAvatar(o, p.x, p.y, p.z, p.yaw, p.pitch, L, this.bob, Math.min(1, Math.hypot(p.vx, p.vz) / 4), this.swingT > 0 ? Math.sin((1 - this.swingT / 0.25) * Math.PI) : 0, !!this.equip.pack, p.sneak);
     if (this.third || p.dead) return;
     // first-person viewmodel (camera space → world)
     const rx = view[0], ry = view[4], rz = view[8], ux = view[1], uy = view[5], uz = view[9], fx = -view[2], fy = -view[6], fz = -view[10];
@@ -774,13 +831,32 @@ export class Game {
     const yaw = p.yaw + Math.PI, pitch = -p.pitch;
     const tc = s ? this.tintOf(s.key) : null;
     const rot = (x: number, y: number, z: number, sx: number, sy: number, sz: number, col: number[], e = 0, tilt = 0) => { const q = place(0.34 + x - sw * 0.15, -0.3 + y + bobS - sw * 0.08 + mineSwing, 0.6 + z + sw * 0.1); o.box(q[0], q[1], q[2], sx, sy, sz, yaw, pitch + tilt - sw * 0.6, col, 1, e); };
-    if (!s || !it) { rot(0, -0.08, 0, 0.13, 0.13, 0.4, lightC([0.85, 0.7, 0.55])); return; }
-    if (it.block) { const sz = it.block.shape === 'cube' ? 0.22 : 0.16; rot(0, 0, 0, sz, sz, sz, lightC(tc!.c), it.block.emit ? 0.6 : 0, 0.2); return; }
+    const sleeve = lightC([0.14, 0.5, 0.6]), sleeveD = lightC([0.1, 0.34, 0.42]), glove = lightC([0.14, 0.15, 0.19]), skin = lightC([0.88, 0.7, 0.56]);
+    const arm = (grip = false) => {
+      rot(0.06, -0.15, -0.3, 0.19, 0.19, 0.56, sleeve, 0, 0.05);
+      rot(0.06, -0.15, -0.02, 0.2, 0.2, 0.06, sleeveD, 0, 0.05);
+      rot(0.02, -0.08, 0.04, 0.15, 0.15, 0.17, glove, 0, 0.05);
+      if (!grip) rot(0.02, -0.07, 0.15, 0.12, 0.1, 0.1, skin, 0, 0.05);
+      rot(0.02, 0.0, 0.01, 0.15, 0.04, 0.12, lightC([0.22, 0.24, 0.3]), 0, 0.05);
+    };
+    if (!s || !it) { arm(); return; }
+    arm(true);
+    const dark = lightC([0.14, 0.15, 0.18]), metal = lightC([0.52, 0.55, 0.6]);
+    if (it.block) { const sz = it.block.shape === 'cube' ? 0.22 : 0.16; rot(0, 0.04, 0.06, sz, sz, sz, lightC(tc!.c), it.block.emit ? 0.6 : 0, 0.2); return; }
     const sp = it.spec; void hand;
-    if (it.type === 'tool' || (it.type === 'weapon' && sp?.weapon?.kind === 'melee')) { rot(0, -0.02, 0.0, 0.05, 0.05, 0.42, lightC([0.3, 0.27, 0.25])); rot(0, 0.02, 0.2, 0.09, 0.09, 0.2, lightC(tc!.c)); rot(0, 0.02, 0.32, 0.05, 0.05, 0.1, tc!.g, 1.5); }
-    else if (it.type === 'weapon') { rot(0, -0.03, 0.05, 0.1, 0.12, 0.42, lightC(tc!.c)); rot(0, 0.0, 0.3, 0.05, 0.05, 0.12, tc!.g, 1.6); rot(0, -0.12, -0.05, 0.07, 0.14, 0.08, lightC([0.25, 0.25, 0.3])); }
-    else if (it.type === 'gadget' || it.type === 'equip') { rot(0, 0, 0.05, 0.16, 0.22, 0.1, lightC(tc!.c)); rot(0, 0.04, 0.11, 0.1, 0.1, 0.02, tc!.g, 1.4); }
-    else rot(0, 0, 0.0, 0.16, 0.16, 0.16, lightC(tc!.c), 0.3, 0.3);
+    if (it.type === 'tool' || (it.type === 'weapon' && sp?.weapon?.kind === 'melee')) {
+      rot(0, -0.02, 0.06, 0.05, 0.05, 0.4, dark); rot(0, -0.02, -0.04, 0.065, 0.065, 0.035, metal); rot(0, -0.02, 0.05, 0.065, 0.065, 0.035, metal);
+      rot(0, 0.02, 0.15, 0.13, 0.12, 0.035, dark); rot(0, 0.03, 0.27, 0.1, 0.09, 0.22, lightC(tc!.c)); rot(0, 0.075, 0.27, 0.06, 0.025, 0.2, metal);
+      rot(0, 0.03, 0.43, 0.05, 0.05, 0.14, tc!.g, 1.6); rot(0, 0.03, 0.51, 0.025, 0.025, 0.04, [1, 1, 1], 2.4);
+      rot(0, -0.02, 0.27, 0.03, 0.05, 0.12, tc!.g, 1.2);
+    }
+    else if (it.type === 'weapon') {
+      rot(0, -0.02, 0.08, 0.1, 0.12, 0.44, lightC(tc!.c)); rot(0, 0.05, 0.1, 0.06, 0.04, 0.24, metal); rot(0, -0.02, 0.36, 0.06, 0.06, 0.16, dark);
+      rot(0, -0.02, 0.45, 0.04, 0.04, 0.04, tc!.g, 2.2); rot(0, -0.13, 0.0, 0.07, 0.16, 0.08, dark, 0, 0.25); rot(0, 0.0, 0.0, 0.11, 0.07, 0.12, metal);
+      rot(0.0, 0.02, 0.22, 0.115, 0.03, 0.12, tc!.g, 1.2);
+    }
+    else if (it.type === 'gadget' || it.type === 'equip') { rot(0, 0.0, 0.1, 0.16, 0.24, 0.1, lightC(tc!.c)); rot(0, 0.03, 0.16, 0.11, 0.11, 0.02, tc!.g, 1.5); rot(0, -0.1, 0.1, 0.12, 0.04, 0.12, dark); rot(0, 0.14, 0.1, 0.04, 0.08, 0.04, metal); }
+    else rot(0, 0.02, 0.06, 0.17, 0.17, 0.17, lightC(tc!.c), 0.3, 0.3);
     void look;
   }
   drawTarget() {
@@ -789,7 +865,16 @@ export class Game {
     const c = 0.003;
     this.dynA.box(t.x + 0.5, t.y + 0.5, t.z + 0.5, 1 + c * 2, 1 + c * 2, 1 + c * 2, 0, 0, [1, 1, 1], 0.07 + Math.sin(performance.now() / 250) * 0.02, 0.6);
     if (this.mining.p > 0 && this.mining.x === t.x && this.mining.y === t.y && this.mining.z === t.z) this.dynA.box(t.x + 0.5, t.y + 0.5, t.z + 0.5, 1.01, 1.01, 1.01, 0, 0, [0, 0, 0], this.mining.p * 0.55, 0);
-    for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) this.dynO.box(t.x + dx, t.y + 0.5, t.z + dz, 0.025, 1.03, 0.025, 0, 0, [0.05, 0.05, 0.06], 1, 0.1);
+    // crisp wireframe around the real selection shape (thin models use a forgiving slab)
+    const boxes = b.shape === 'cube' || b.shape === 'liquid' ? [{ b: [0, 0, 0, 1, 1, 1] as number[] }] : pickBoxes(b, this.world.getState(t.x, t.y, t.z), 0);
+    const w = 0.014, e = 0.004, ec = [0.04, 0.04, 0.05];
+    for (const bx of boxes) {
+      const [x0, y0, z0, x1, y1, z1] = bx.b.map((v, i) => (i < 3 ? v - e : v + e)); const X = t.x, Y = t.y, Z = t.z;
+      const sx = x1 - x0, sy = y1 - y0, sz = z1 - z0;
+      for (const yy of [y0, y1]) for (const zz of [z0, z1]) this.dynO.box(X + x0 + sx / 2, Y + yy, Z + zz, sx + w, w, w, 0, 0, ec, 1, 0.1);
+      for (const xx of [x0, x1]) for (const zz of [z0, z1]) this.dynO.box(X + xx, Y + y0 + sy / 2, Z + zz, w, sy + w, w, 0, 0, ec, 1, 0.1);
+      for (const xx of [x0, x1]) for (const yy of [y0, y1]) this.dynO.box(X + xx, Y + yy, Z + z0 + sz / 2, w, w, sz + w, 0, 0, ec, 1, 0.1);
+    }
   }
 
   updateHud(dt: number) {
@@ -799,7 +884,7 @@ export class Game {
     h.target = this.target ? Reg.blocks[this.target.id]?.name : null; h.sim = { machines: this.sim.machines.length };
     const hi = this.heldItem(); h.held = hi ? hi.name : ''; h.heldDur = this.held()?.dur; h.heldMax = hi?.spec?.tool?.dur ?? hi?.spec?.weapon?.dur;
     const cdEnd = hi && hi.spec?.gadget ? (this.cooldown.get(hi.key) ?? 0) : 0; h.cd = cdEnd > performance.now() / 1000 ? (cdEnd - performance.now() / 1000) / (hi!.spec!.gadget!.cd || 1) : 0;
-    h.banner = this.sim.banner?.text; h.power = [...this.sim.nodes.values()].length;
+    h.hint = contextHint(this); h.banner = this.sim.banner?.text; h.power = [...this.sim.nodes.values()].length;
     h.widgets = Reg.hudWidgets.map((w) => ({ pos: w.pos, text: w.text.replace('{x}', String(Math.floor(p.x))).replace('{y}', String(Math.floor(p.y))).replace('{z}', String(Math.floor(p.z))).replace('{time}', (this.time * 24).toFixed(1)).replace('{fps}', String(this.fps)).replace('{biome}', h.biome) }));
     this.mapT -= dt;
     if (this.mapT <= 0) { this.mapT = 0.5; this.drawMinimap(); }

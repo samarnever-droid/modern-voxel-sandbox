@@ -36,3 +36,9 @@ src/mods      loader (manifest/deps/semver), sandboxed Lua runtime, example mods
 src/ui        React HUD, menus, inventory/crafting/research, settings, mod manager
 ```
 Multiplayer is **not** implemented. The architecture keeps simulation (`Game`/`Sim`/`World`) free of DOM and renderer dependencies — they run headless in the test-suite — so a deterministic server/client split can be added without a rewrite.
+
+## Recent improvements
+- **Ladders rebuilt**: real rails + rungs, attach to the clicked wall (placement bug fixed), click to extend, forgiving selection box, climb with W/Space, S to descend, Shift to hold, hop over the top, pop off when the wall is removed. New hand-craftable Timber Ladder.
+- **Machines redesigned**: jointed rigs with bending legs, spinning rotors, glowing eyes, attack wind-ups, health bars, shadows, death debris. New third-person avatar and first-person arm/tool models.
+- **Learn-to-play**: Minecraft-style main menu (Quick Start, world list, mode cards), step-by-step Guide tracker (G), full manual (H / F1), contextual hints, loading-screen tips.
+- **HUD/graphics**: pixel hearts & food, hit marker, wireframe block outline, fixed a texture bug that produced black specks on grass.

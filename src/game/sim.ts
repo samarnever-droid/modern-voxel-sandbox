@@ -4,6 +4,7 @@ import { hash01 } from '../engine/noise';
 import { rayBox } from '../world/world';
 import type { Chunk } from '../world/world';
 import { Dyn } from './dyn';
+import { drawMachine } from './mobs';
 import { emitMod } from '../mods/loader';
 import { audio } from '../audio/audio';
 import type { Game } from './core';
@@ -81,14 +82,14 @@ export class Sim {
     return false;
   }
   hurtMachine(m: Machine, dmg: number, kx = 0, kz = 0) {
-    m.hp -= dmg; m.hit = 0.25; m.vx += kx; m.vz += kz;
+    m.hp -= dmg; m.hit = 0.25; m.vx += kx; m.vz += kz; this.g.hitT = 0.25;
     this.burst(m.x, m.y + 0.6, m.z, 'spark', 8);
     audio.sfx('arc', [m.x, m.y, m.z]);
     if (m.hp <= 0) this.killMachine(m);
   }
   killMachine(m: Machine) {
     this.machines = this.machines.filter((q) => q !== m);
-    this.burst(m.x, m.y + 0.8, m.z, 'spark', 30); this.burst(m.x, m.y + 0.8, m.z, 'smoke', 8);
+    this.burst(m.x, m.y + 0.8, m.z, 'spark', 30); this.burst(m.x, m.y + 0.8, m.z, 'smoke', 10); this.burst(m.x, m.y + 0.7, m.z, 'chip', 16, [0.5, 0.53, 0.58]); this.burst(m.x, m.y + 0.7, m.z, 'chip', 8, [0.75, 0.38, 0.15]); this.burst(m.x, m.y + 0.7, m.z, 'cyan', 6);
     audio.sfx('explode', [m.x, m.y, m.z], 0.7);
     const r = Math.random();
     this.drop(m.x, m.y + 0.5, m.z, 'scrap_metal', 1 + Math.floor(Math.random() * 3));
@@ -123,6 +124,10 @@ export class Sim {
     if (o.vy < 0 && solidAt(o.x, ny, o.z)) { o.y = Math.floor(ny) + 1; o.vy = 0; } else if (o.vy > 0 && solidAt(o.x, ny + h, o.z)) o.vy = 0; else o.y = ny;
     if (o.y < 0) o.y = 80;
   }
+  private face(m: Machine, target: number, dt: number, rate: number) {
+    let d = target - m.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+    m.yaw += d * Math.min(1, dt * rate);
+  }
   private updateMachines(dt: number) {
     const g = this.g, p = g.p;
     const hostile = g.mode === 'survival' || g.mode === 'challenge';
@@ -138,7 +143,7 @@ export class Sim {
         const want = m.type === 'sentinel' ? 8 : 0.9;
         if (dist > want) { tx = dx / dist; tz = dz / dist; speed = s.speed; }
         else if (m.type === 'sentinel' && dist < want - 2) { tx = -dx / dist; tz = -dz / dist; speed = s.speed * 0.7; }
-        m.yaw = Math.atan2(dx, dz);
+        this.face(m, Math.atan2(dx, dz), dt, 9);
         if (m.cd <= 0) {
           if (m.type === 'sentinel') {
             if (g.world.raycast(m.x, m.y, m.z, dx / dist, dy / dist, dz / dist, dist) === null || dist < 3) {
@@ -152,7 +157,7 @@ export class Sim {
         m.wander -= dt;
         if (m.wander <= 0) { m.wander = 2 + Math.random() * 4; const a = Math.random() * 6.28; m.wx = m.x + Math.cos(a) * 6; m.wz = m.z + Math.sin(a) * 6; }
         const wx = m.wx - m.x, wz = m.wz - m.z, wl = Math.hypot(wx, wz);
-        if (wl > 0.8) { tx = wx / wl; tz = wz / wl; speed = s.speed * 0.3; m.yaw = Math.atan2(wx, wz); }
+        if (wl > 0.8) { tx = wx / wl; tz = wz / wl; speed = s.speed * 0.3; this.face(m, Math.atan2(wx, wz), dt, 4); }
         if (claimed && Math.random() < dt * 0.4) this.burst(m.x, m.y + 0.6, m.z, 'cyan', 1);
       }
       m.vx += (tx * speed - m.vx) * Math.min(1, dt * 6); m.vz += (tz * speed - m.vz) * Math.min(1, dt * 6);
@@ -407,24 +412,10 @@ export class Sim {
     const g = this.g, w = this.weather;
     const lightAt = (x: number, y: number, z: number) => { const l = g.world.getLight(Math.floor(x), Math.floor(y + 1), Math.floor(z)); const sky = (l >> 4) / 15 * (0.15 + g.dayFactor * 0.85), bl = (l & 15) / 15; return Math.min(1, 0.18 + Math.max(sky, bl * 0.9)); };
     for (const m of this.machines) {
-      const L = lightAt(m.x, m.y, m.z), flash = m.hit > 0 ? 1 : 0, sw = Math.sin(m.anim * 3) * 0.5;
-      const c = (r: number, gg: number, b: number) => [Math.min(1, r * L + flash * 0.8), Math.min(1, gg * L + flash * 0.8), Math.min(1, b * L + flash * 0.8)];
-      const cy = m.yaw;
-      if (m.type === 'scrapper') {
-        o.box(m.x, m.y + 0.35, m.z, 0.8, 0.32, 0.6, cy, 0, c(0.75, 0.38, 0.18)); o.box(m.x, m.y + 0.55, m.z, 0.5, 0.2, 0.4, cy, 0, c(0.55, 0.57, 0.6));
-        o.box(m.x + Math.sin(cy) * 0.35, m.y + 0.42, m.z + Math.cos(cy) * 0.35, 0.18, 0.12, 0.1, cy, 0, [1, 0.2, 0.15], 1, 1);
-        for (let i = 0; i < 4; i++) { const sx = i < 2 ? -0.4 : 0.4, sz = i % 2 ? 0.25 : -0.25, ph = (i % 2 ? 1 : -1) * sw; const px = Math.cos(cy) * sx + Math.sin(cy) * (sz + ph * 0.2), pz = -Math.sin(cy) * sx + Math.cos(cy) * (sz + ph * 0.2); o.box(m.x + px, m.y + 0.17, m.z + pz, 0.1, 0.34, 0.1, cy, 0, c(0.3, 0.3, 0.34)); }
-      } else if (m.type === 'sentinel') {
-        const by = m.y + Math.sin(t * 3 + m.id) * 0.1;
-        o.box(m.x, by + 0.3, m.z, 0.55, 0.4, 0.55, cy, 0, c(0.6, 0.64, 0.7)); o.box(m.x, by + 0.62, m.z, 0.3, 0.12, 0.3, cy, 0, c(0.25, 0.27, 0.32));
-        o.box(m.x + Math.sin(cy) * 0.28, by + 0.3, m.z + Math.cos(cy) * 0.28, 0.2, 0.2, 0.1, cy, 0, [1, 0.15, 0.1], 1, 1.4);
-        o.box(m.x, by + 0.7, m.z, 1.1, 0.04, 0.12, t * 14 + m.id, 0, c(0.8, 0.85, 0.9), 0.85); o.box(m.x, by + 0.7, m.z, 1.1, 0.04, 0.12, t * 14 + m.id + 1.57, 0, c(0.8, 0.85, 0.9), 0.85);
-      } else {
-        o.box(m.x, m.y + 1.5, m.z, 0.9, 1.1, 0.6, cy, 0, c(0.3, 0.38, 0.5)); o.box(m.x, m.y + 2.25, m.z, 0.5, 0.4, 0.5, cy, 0, c(0.45, 0.48, 0.55));
-        o.box(m.x + Math.sin(cy) * 0.27, m.y + 2.28, m.z + Math.cos(cy) * 0.27, 0.4, 0.1, 0.1, cy, 0, [1, 0.2, 0.15], 1, 1.6);
-        o.box(m.x, m.y + 1.5, m.z, 0.5, 0.5, 0.64, cy, 0, [0.3, 0.9, 1], 1, 0.8);
-        for (const s of [-1, 1]) { const px = Math.cos(cy) * s * 0.65, pz = -Math.sin(cy) * s * 0.65; o.box(m.x + px, m.y + 1.4, m.z + pz, 0.28, 1.1, 0.3, cy, s * sw * 0.8, c(0.38, 0.42, 0.5)); const lx = Math.cos(cy) * s * 0.28, lz = -Math.sin(cy) * s * 0.28; o.box(m.x + lx, m.y + 0.5, m.z + lz, 0.3, 1.0, 0.34, cy, -s * sw * 0.7, c(0.25, 0.28, 0.35)); }
-      }
+      const st = MSTATS[m.type];
+      let gy = m.y;
+      if (m.type === 'sentinel') { const hit = g.world.raycast(m.x, m.y + 0.4, m.z, 0, -1, 0, 14); gy = hit ? m.y + 0.4 - hit.t : m.y - 3; }
+      drawMachine(o, a, m, lightAt(m.x, m.y, m.z), t, cam, right, up, gy, st.hp, st.h);
     }
     for (const d of this.drops) { const it = Reg.items.get(d.key); const b = it?.block; const mc = b?.map ?? '#cccccc'; const col = [parseInt(mc.slice(1, 3), 16) / 255, parseInt(mc.slice(3, 5), 16) / 255, parseInt(mc.slice(5, 7), 16) / 255]; const L = lightAt(d.x, d.y, d.z); o.box(d.x, d.y + 0.25 + Math.sin(t * 2 + d.age) * 0.06, d.z, 0.28, 0.28, 0.28, t * 1.5 + d.age, 0, col.map((v) => Math.min(1, v * (0.6 + L * 0.6))), 1, it?.type === 'block' ? 0 : 0.35); }
     if (this.drone) { const d = this.drone; o.box(d.x, d.y, d.z, 0.3, 0.16, 0.3, t, 0, [0.3, 0.34, 0.4]); o.box(d.x, d.y + 0.1, d.z, 0.5, 0.03, 0.06, t * 20, 0, [0.8, 0.85, 0.9], 0.8); o.box(d.x, d.y, d.z, 0.12, 0.12, 0.12, 0, 0, [0.3, 1, 0.7], 1, 1.4); }

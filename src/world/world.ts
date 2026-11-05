@@ -1,4 +1,4 @@
-import { OPAQ, EMIT, EMON, SOLID, FULL, LIQ, ID, Reg, blockBoxes, Box, S_ON, S_POWER, Block } from '../engine/registry';
+import { OPAQ, EMIT, EMON, SOLID, FULL, LIQ, ID, Reg, blockBoxes, pickBoxes, Box, S_ON, S_POWER, Block } from '../engine/registry';
 
 export const CS = 16;
 export const CH = 128;
@@ -255,7 +255,7 @@ export class World {
         const b = Reg.blocks[id]!;
         const st = this.getState(x, y, z);
         let best = 1e9;
-        for (const bx of blockBoxes(b, st, connMask(this, x, y, z, b))) {
+        for (const bx of pickBoxes(b, st, connMask(this, x, y, z, b))) {
           const th = rayBox(ox - x, oy - y, oz - z, dx, dy, dz, bx.b);
           if (th >= 0 && th < best) best = th;
         }
