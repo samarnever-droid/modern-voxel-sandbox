@@ -1,0 +1,1 @@
+[ { "key": "hello_block", "name": "Hello Block", "cat": "Mods: Hello", "tex": { "p": "stripes", "a": ["#ffcc00", "#222222", 4, 0] }, "hard": 1, "craft": { "st": "hand", "in": { "scrap_metal": 1 }, "n": 4 } } ]
